@@ -35,9 +35,6 @@ class PeruvianPlateDetector:
             confidence (FLOAT): confianza en la detección
         """
 
-        if(os.path.exists('vehicle_registry.db')):
-            os.create_file('vehicle_registry.db')
-
         conn = sqlite3.connect('vehicle_registry.db')
         cursor = conn.cursor()
         
@@ -331,6 +328,11 @@ class PeruvianPlateDetector:
                                 
                                 # Guardar imagen
                                 img_path = f'plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
+
+                                path = os.getcwd() + '/plates/'
+                                if os.path.exists(path) is False:
+                                    os.mkdir('plates')
+                            
                                 cv2.imwrite(img_path, plate_img)
                                 
                                 # Registrar vehículo y movimiento
