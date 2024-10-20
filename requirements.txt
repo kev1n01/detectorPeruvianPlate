@@ -1,0 +1,8 @@
+opencv-python
+easyocr
+matplotlib
+numpy
+pandas
+ultralytics
+filterpy
+GPUtil
