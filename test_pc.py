@@ -8,8 +8,8 @@ import easyocr
 
 class PerformanceTest:
     def __init__(self):
-        self.model = YOLO('yolo8n.pt')  # Usando modelo v8 pequeño para prueba
-        # self.model = YOLO('./weights/license_detector_medium.pt')  # Usando modelo yolo11 XDDDDD
+        # self.model = YOLO('yolo8n.pt')  # Usando modelo v8 pequeño para prueba
+        self.model = YOLO('./weights/license_detector_medium.pt')  # Usando modelo yolo11 XDDDDD
         self.reader = easyocr.Reader(['en'])
         
     def check_system_resources(self):

@@ -80,15 +80,17 @@ class PeruvianPlateDetector:
         """
         # limpieza inicial del texto
         plate_text = plate_text.upper().strip()
-        plate_text = re.sub(r'\s+', '', plate_text)  # Eliminar espacios
+        print('plate upper and strip: ', plate_text)
+        # plate_text = re.sub(r'\s+', '', plate_text)  # Eliminar espacios
+        print('plate no spaces: ', plate_text)
         
         # elimina prefijos PE o PERU si existen
-        plate_text = re.sub(r'^(PE|PERU)[-]?', '', plate_text)
-        
+        # plate_text = re.sub(r'^(PE|PERU)[-]?', '', plate_text)
+        print('plate no PE or PERU: ', plate_text)
         # Definiendo aatrones válidos
         patterns = [
             (r'^(\d{4})[-]?([A-Z]{2})$', 'moto'), # Caso 1: Motocicleta/Mototaxi (1234-AB)
-            (r'^([A-Z0-9]{2,3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
+            (r'^([A-Z]{3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
             (r'^E[\s-]?PA[-]?(\d{3})$', 'policia') # Caso 3: Policia (E PA-123)
         ]
         
@@ -101,6 +103,8 @@ class PeruvianPlateDetector:
                     formatted = f"{match.group(1)}-{match.group(2)}"
                 elif vehicle_type == 'policia':
                     formatted = f"E PA-{match.group(1)}"
+                print('text formatted: ', formatted)
+                print('tpye vehicle: ', vehicle_type)
                 return formatted, vehicle_type
         
         return None, None

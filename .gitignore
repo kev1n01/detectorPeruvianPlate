@@ -3,3 +3,7 @@ __pycache__
 plates
 vehicle_registry.db
 weights
+build
+dist
+app.spec
+logo_mtc.ico

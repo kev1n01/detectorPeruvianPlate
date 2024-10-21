@@ -6,3 +6,4 @@ pandas
 ultralytics
 filterpy
 GPUtil
+flask
