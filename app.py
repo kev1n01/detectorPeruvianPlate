@@ -8,6 +8,7 @@ import sqlite3
 import re
 import os
 import torch
+import random
 
 class PeruvianPlateDetector:
     def __init__(self):
@@ -177,10 +178,32 @@ class PeruvianPlateDetector:
                 return formatted_plate, vehicle_type, score
                 
         return None, None, 0.0
+    
+    def draw_transparent_rectangle(frame, x1, y1, x2, y2, color, alpha=0.4):
+        """
+        Dibuja un rectángulo semitransparente en la imagen.
+
+        Args:
+        - frame: La imagen o frame donde dibujar el rectángulo.
+        - x1, y1, x2, y2: Coordenadas del rectángulo.
+        - color: Color del rectángulo en formato (B, G, R).
+        - alpha: Nivel de transparencia (0.0 totalmente transparente, 1.0 totalmente opaco).
+        """
+        # Crear una copia de la imagen original
+        overlay = frame.copy()
+        
+        # Dibujar el rectángulo relleno en la copia
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+        
+        # Superponer el rectángulo en la imagen original con el nivel de transparencia (alpha)
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+
+    def generate_random_color(self):
+        return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def process_video_feed(self):
         """Procesa el video en tiempo real para detectar y reconocer placas de vehículos."""
-        cap = cv2.VideoCapture(1)  # Reemplazar con el índice de tu cámara o fuente de video
+        cap = cv2.VideoCapture(3)  # Reemplazar con el índice de tu cámara o fuente de video
         
         while True:
             ret, frame = cap.read()
@@ -196,10 +219,19 @@ class PeruvianPlateDetector:
                     conf = float(box.conf[0])
 
                     if conf > 0.7:  # Umbral de confianza para detección
+                        
                         plate_img = frame[y1:y2, x1:x2]
-                        plate_number, vehicle_type, ocr_conf = self.recognize_plate(plate_img)
+                        
+                        color = self.generate_random_color()
 
-                        if plate_number and ocr_conf > 0.6:  # Umbral de confianza para OCR
+                        # dibujar rectángulo y numero de placa reconocida por modelo yolo
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                        cv2.putText(frame, f"{str(round(conf * 100))}%", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                    
+                        plate_number, vehicle_type, ocr_conf = self.recognize_plate(plate_img)
+                        print("placa reconocida", plate_number, "ocr_conf ", ocr_conf, "vehicle_type ", vehicle_type)
+
+                        if plate_number and ocr_conf > 0.9:  # Umbral de confianza para OCR
                             if self.can_process_plate(plate_number):
                                 # Determinar tipo de movimiento
                                 movement_type = self.determine_movement_type(plate_number)
@@ -209,23 +241,26 @@ class PeruvianPlateDetector:
                                 
                                 if not os.path.exists('plates'):
                                     os.makedirs('plates')
-                                cv2.imwrite(img_path, plate_img)
 
                                 # Registrar vehículo y movimiento
                                 self.register_vehicle(plate_number, vehicle_type)
                                 self.register_movement(plate_number, movement_type, img_path, ocr_conf)
                                 
-                                print("placa registrada", plate_number)
                                 # Visualización en la pantalla
                                 color = (0, 255, 0) if movement_type == 'entrada' else (0, 0, 255)
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                                # Dibujar el rectángulo semitransparente
+                                self.draw_transparent_rectangle(frame, x1, y1, x2, y2, color, alpha=0.4)
+                                # cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                                 cv2.putText(frame, 
                                            f'{plate_number} ({movement_type})',
                                            (x1, y1 - 10),
                                            cv2.FONT_HERSHEY_SIMPLEX,
-                                           0.9,
+                                           1,
                                            color, 
                                            2)
+                                
+                                cv2.imwrite(img_path, plate_img)
+                                print("placa registrada", plate_number)
 
             cv2.imshow('Placa detectada', frame)
 
