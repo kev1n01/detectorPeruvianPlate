@@ -201,7 +201,7 @@ class PeruvianPlateDetector:
             print("Longitud del texto:", len(text))
             
             # Validar si el texto tiene exactamente 7 caracteres (formato de placa esperado)
-            if len(text) != 7:
+            if len(text) < 7 and "-" not in text and len(text) >= 8:
                 print('No cumple con el formato de placa (debe tener 7 caracteres)')
             else:
                 print(f'Bbox: {bbox}, Text: {text}, Score: {score}')
