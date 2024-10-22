@@ -11,7 +11,7 @@ import os
 class PeruvianPlateDetector:
     def __init__(self):
         self.plate_detector = YOLO('./weights/license_detector_medium.pt')  # Modelo de detección de placas
-        self.reader = easyocr.Reader(['en'])  # inicializar lector de texto
+        self.reader = easyocr.Reader(['es'])  # inicializar lector de texto
         self.db_connection = self.setup_database()  # inicializar conexion a la base de datos
         self.last_processed_plates = {}
         self.min_detection_interval = 15  # intervalo en segundos entre detecciones
@@ -79,34 +79,39 @@ class PeruvianPlateDetector:
         :return: tuple (placa estandarizada, tipo de vehículo) o (None, None)
         """
         # limpieza inicial del texto
-        plate_text = plate_text.upper().strip()
-        print('plate upper and strip: ', plate_text)
+        # plate_text = plate_text.upper().strip()
+        # print('plate upper and strip: ', plate_text)
         # plate_text = re.sub(r'\s+', '', plate_text)  # Eliminar espacios
-        print('plate no spaces: ', plate_text)
+        # print('plate no spaces: ', plate_text)
         
-        # elimina prefijos PE o PERU si existen
+        # # elimina prefijos PE o PERU si existen
         # plate_text = re.sub(r'^(PE|PERU)[-]?', '', plate_text)
-        print('plate no PE or PERU: ', plate_text)
-        # Definiendo aatrones válidos
-        patterns = [
-            (r'^(\d{4})[-]?([A-Z]{2})$', 'moto'), # Caso 1: Motocicleta/Mototaxi (1234-AB)
-            (r'^([A-Z]{3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
-            (r'^E[\s-]?PA[-]?(\d{3})$', 'policia') # Caso 3: Policia (E PA-123)
-        ]
+        # print('plate no PE or PERU: ', plate_text)
+        # # Definiendo aatrones válidos
+        # patterns = [
+        #     (r'^(\d{4})[-]?([A-Z]{2})$', 'moto'), # Caso 1: Motocicleta/Mototaxi (1234-AB)
+        #     (r'^([A-Z]{3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
+        #     (r'^E[\s-]?PA[-]?(\d{3})$', 'policia') # Caso 3: Policia (E PA-123)
+        # ]
         
-        for pattern, vehicle_type in patterns:
-            match = re.match(pattern, plate_text)
-            if match:
-                if vehicle_type == 'moto':
-                    formatted = f"{match.group(1)}-{match.group(2)}"
-                elif vehicle_type == 'regular':
-                    formatted = f"{match.group(1)}-{match.group(2)}"
-                elif vehicle_type == 'policia':
-                    formatted = f"E PA-{match.group(1)}"
-                print('text formatted: ', formatted)
-                print('tpye vehicle: ', vehicle_type)
-                return formatted, vehicle_type
+        # for pattern, vehicle_type in patterns:
+        #     match = re.match(pattern, plate_text)
+        #     if match:
+        #         if vehicle_type == 'moto':
+        #             formatted = f"{match.group(1)}-{match.group(2)}"
+        #         elif vehicle_type == 'regular':
+        #             formatted = f"{match.group(1)}-{match.group(2)}"
+        #         elif vehicle_type == 'policia':
+        #             formatted = f"E PA-{match.group(1)}"
+        #         print('text formatted: ', formatted)
+        #         print('tpye vehicle: ', vehicle_type)
+        #         return formatted, vehicle_type
         
+        
+        #para vehiculo lineal
+
+
+        #para vehiculo regular
         return None, None
 
     def preprocess_plate(self, plate_img):
@@ -230,7 +235,7 @@ class PeruvianPlateDetector:
             tuple: (número de placa, tipo de vehículo, confianza)
         """
         processed_plate = self.preprocess_plate(plate_img)
-        
+
         # Configurar parámetros de EasyOCR para detectar PE/PERU
         results = self.reader.readtext(
             processed_plate,
@@ -238,53 +243,48 @@ class PeruvianPlateDetector:
             batch_size=1,
             detail=1
         )
-        
+
         if not results:
             return None, None, 0.0
-        
-        # orenar resultados por posición horizontal
-        results.sort(key=lambda x: x[0][0][0])
-        
-        # Concatenar resultados
-        text = ''.join(result[1] for result in results)
-        confidence = np.mean([result[2] for result in results])
-        
-        # Validar formato de la placa
-        plate_number, vehicle_type = self.validate_plate_format(text)
-            
-        if plate_number:
-            # Calcular nueva confianza basada en la longitud esperada
-            expected_length = len(plate_number)
-            length_confidence = min(len(text) / (expected_length + 4), 1.0)  # +4 para considerar PE/PERU
-            confidence = (confidence + length_confidence) / 2
-        
-        return plate_number, vehicle_type, confidence
 
-    def test_plate_validation(self):
-        """Función de prueba para validar diferentes formatos de placas."""
-        test_cases = [
-            "PE 1234-AB",
-            "PERU 1234-AB",
-            "PE ABC-123",
-            "PERU ABC-123",
-            "PE E PA-123",
-            "PERU E PA-123",
-            "1234-AB",
-            "ABC-123",
-            "E PA-123",
-            "PE V2Q-424",
-            "PERU V2Q-424",
-            "V2Q-424"
-        ]
-        
-        print("Prueba de validación de placas:")
-        print("-" * 50)
-        for plate in test_cases:
-            formatted_plate, vehicle_type = self.validate_plate_format(plate)
-            print(f"Original: {plate}")
-            print(f"Formatted: {formatted_plate}")
-            print(f"Type: {vehicle_type}")
-            print("-" * 30)
+        # Ordenar resultados por posición horizontal
+        results.sort(key=lambda x: x[0][0][0])
+
+        # Calcular la confianza promedio
+        confidence = np.mean([result[2] for result in results])
+
+        plate_number = ''
+        vehicle_type = ''
+        score_r = 0.0
+        found = False  # Se cambió el nombre a "found" para ser más claro en inglés
+
+        for t in results:
+            bbox, text, score = t
+            print("Longitud del texto:", len(text))
+            
+            # Validar si el texto tiene exactamente 7 caracteres (formato de placa esperado)
+            if len(text) != 7:
+                print('No cumple con el formato de placa (debe tener 7 caracteres)')
+            else:
+                print(f'Bbox: {bbox}, Text: {text}, Score: {score}')
+                plate_number = text
+                vehicle_type = 'regular'
+                score_r = score
+                found = True
+                print(f'Placa encontrada: {plate_number}, Tipo de vehículo: {vehicle_type}, Score: {score_r}')
+            
+            if found:
+                break  # Si se encuentra una placa válida, salir del bucle
+
+        # Verificación final de la placa
+        print(f'Número de placa final: {plate_number}')
+
+        if plate_number:
+            # Si se encontró una placa válida, se retorna la información
+            return plate_number, vehicle_type, score_r
+
+        # Si no se encontró una placa válida, se retorna None
+        return None, None, 0.0
 
     def process_video_feed(self):
         """
@@ -325,7 +325,7 @@ class PeruvianPlateDetector:
                         plate_img = frame[y1:y2, x1:x2]
                         plate_number, vehicle_type, ocr_conf = self.recognize_plate(plate_img)
                         
-                        if plate_number and ocr_conf > 0.7:  # Umbral de confianza para OCR
+                        if plate_number and ocr_conf > 0.3:  # Umbral de confianza para OCR
                             if self.can_process_plate(plate_number):
                                 # Determinar tipo de movimiento
                                 movement_type = self.determine_movement_type(plate_number)
@@ -342,7 +342,9 @@ class PeruvianPlateDetector:
                                 # Registrar vehículo y movimiento
                                 self.register_vehicle(plate_number, vehicle_type)
                                 self.register_movement(plate_number, movement_type, img_path, ocr_conf)
-                                
+
+                                print("se registro la placa:", plate_number)
+
                                 # Visualización
                                 color = (0, 255, 0) if movement_type == 'entrada' else (0, 0, 255)
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -365,5 +367,4 @@ class PeruvianPlateDetector:
 
 if __name__ == "__main__":
     detector = PeruvianPlateDetector()
-    detector.test_plate_validation()
     detector.process_video_feed()
