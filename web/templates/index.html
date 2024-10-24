@@ -9,18 +9,17 @@
 
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-8">Detector de Placas Peruanas</h1>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-1">
             <!-- Video Stream -->
-            <div class="bg-white rounded-lg shadow-lg p-4">
+            <!-- <div class="bg-white rounded-lg shadow-lg p-4">
                 <h2 class="text-xl font-semibold mb-4">Video en Vivo</h2>
                 <img src="{{ url_for('video_feed') }}" class="w-full">
-            </div>
+            </div> -->
 
             <!-- Registros -->
             <div class="bg-white rounded-lg shadow-lg p-4">
-                <h2 class="text-xl font-semibold mb-4">Registros Recientes</h2>
+                <h2 class="text-xl font-semibold mb-4 text-center">Registros Recientes</h2>
                 <div class="overflow-x-auto">
                     <table class="min-w-full table-auto">
                         <thead>
@@ -35,6 +34,11 @@
                         </thead>
                         <tbody id="records-table">
                         </tbody>
+                        <tfoot id="foot">
+                            <tr>
+                                <td colspan="6" class="text-center bg-gray-100 py-2">No hay registros</td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -45,28 +49,32 @@
         function updateRecords() {
             $.get('/get_records', function (data) {
                 let tableContent = '';
-                data.forEach(record => {
-                    const confidence = (record.confidence * 100).toFixed(1);
-                    const timestamp = new Date(record.timestamp).toLocaleString();
-                    tableContent += `
-                        <tr class="border-b">
-                            <td class="px-4 py-2">${record.plate}</td>
-                            <td class="px-4 py-2">${record.vehicle_type}</td>
-                            <td class="px-4 py-2">
-                                <span class="px-2 py-1 rounded ${record.movement === 'entrada' ? 'bg-green-200' : 'bg-red-200'}">
-                                    ${record.movement}
-                                </span>
-                            </td>
-                            <td class="px-4 py-2">${timestamp}</td>
-                            <td class="px-4 py-2">${confidence}%</td>
-                            <td class="px-4 py-2">
-                                <img src="${record.image_path}" class="h-12 w-auto" 
-                                     onclick="window.open(this.src)" style="cursor: pointer">
-                            </td>
-                        </tr>
-                    `;
-                });
-                $('#records-table').html(tableContent);
+                console.log(data, data.length !== 0)
+                if(data.length !== 0){
+                    data.forEach(record => {
+                        const confidence = (record.confidence * 100).toFixed(1);
+                        const timestamp = new Date(record.timestamp).toLocaleString();
+                        tableContent += `
+                            <tr class="border-b">
+                                <td class="px-4 py-2">${record.plate}</td>
+                                <td class="px-4 py-2">${record.vehicle_type}</td>
+                                <td class="px-4 py-2">
+                                    <span class="px-2 py-1 rounded ${record.movement === 'entrada' ? 'bg-green-200' : 'bg-red-200'}">
+                                        ${record.movement}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2">${timestamp}</td>
+                                <td class="px-4 py-2">${confidence}%</td>
+                                <td class="px-4 py-2">
+                                    <img src="/${record.image_path}" class="h-12 w-auto" 
+                                        onclick="window.open(this.src)" style="cursor: pointer">
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    $('#records-table').html(tableContent);
+                    $('#foot').addClass('hidden');
+                }
             });
         }
 

@@ -266,14 +266,15 @@ class PeruvianPlateDetector:
                                 movement_type = self.determine_movement_type(plate_number)
 
                                 # Guardar imagen
-                                img_path = f'plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
+                                img_path = f'web/static/plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
+                                img_path_to_db = f'static/plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
                                 
-                                if not os.path.exists('plates'):
-                                    os.makedirs('plates')
+                                if not os.path.exists('web/static/plates'):
+                                    os.makedirs('web/static/plates')
 
                                 # Registrar vehículo y movimiento
                                 self.register_vehicle(plate_number, vehicle_type)
-                                self.register_movement(plate_number, movement_type, img_path, ocr_conf)
+                                self.register_movement(plate_number, movement_type, img_path_to_db, ocr_conf)
                                 
                                 # Visualización en la pantalla
                                 colorOCR = (0, 255, 0) if movement_type == 'entrada' else (0, 0, 255)

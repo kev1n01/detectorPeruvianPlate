@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, Response, jsonify, request
+from flask import Flask, render_template, Response, jsonify, request, current_app
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -11,16 +11,17 @@ import re
 import os
 import threading
 import queue
+import torch
 
 app = Flask(__name__)
 
 class PeruvianPlateDetector:
     def __init__(self):
         self.plate_detector = YOLO('../weights/license_detector_medium.pt')
-        self.reader = easyocr.Reader(['es'])
+        self.reader = easyocr.Reader(['es'], gpu=torch.cuda.is_available())  # Usar GPU si está disponible para EasyOCR
         self.db_connection = self.setup_database()
-        self.last_processed_plates = {}
-        self.min_detection_interval = 15
+        self.last_processed_     = {}
+        self.min_detection_interval = 10
         self.frame_queue = queue.Queue(maxsize=10)
         self.result_queue = queue.Queue(maxsize=10)
         self.is_running = False
@@ -55,49 +56,40 @@ class PeruvianPlateDetector:
     
     def validate_plate_format(self, plate_text):
 
-        # # limpieza inicial del texto
-        # plate_text = plate_text.upper().strip()
-        # print('plate upper and strip: ', plate_text)
-        # plate_text = re.sub(r'\s+', '', plate_text)  # Eliminar espacios
-        # print('plate no spaces: ', plate_text)
+        # limpieza inicial del texto
+        plate_text = plate_text.upper().strip()
+        print('plate upper and strip: ', plate_text)
+        plate_text = re.sub(r'\s+', '', plate_text)  # Eliminar espacios
+        print('plate no spaces: ', plate_text)
         
-        # # elimina prefijos PE o PERU si existen
-        # plate_text = re.sub(r'^(PE|PERU)[-]?', '', plate_text)
-        # print('plate no PE or PERU: ', plate_text)
-        # # Definiendo aatrones válidos
-        # patterns = [
-        #     (r'^(\d{4})[-]?([A-Z]{2})$', 'moto'), # Caso 1: Motocicleta/Mototaxi (1234-AB)
-        #     (r'^([A-Z]{3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
-        #     (r'^E[\s-]?PA[-]?(\d{3})$', 'policia') # Caso 3: Policia (E PA-123)
-        # ]
+        # elimina prefijos PE o PERU si existen
+        plate_text = re.sub(r'^(PE|PERU)[-]?', '', plate_text)
+        print('plate no PE or PERU: ', plate_text)
+        # Definiendo aatrones válidos
+        patterns = [
+            (r'^(\d{4})[-]?([A-Z]{2})$', 'moto'), # Caso 1: Motocicleta/Mototaxi (1234-AB)
+            (r'^([A-Z]{3})[-]?(\d{3})$', 'regular'), # Caso 2: Vehiculos regulares (ABC-123)
+            (r'^E[\s-]?PA[-]?(\d{3})$', 'policia') # Caso 3: Policia (E PA-123)
+        ]
         
-        # for pattern, vehicle_type in patterns:
-        #     match = re.match(pattern, plate_text)
-        #     if match:
-        #         if vehicle_type == 'moto':
-        #             formatted = f"{match.group(1)}-{match.group(2)}"
-        #         elif vehicle_type == 'regular':
-        #             formatted = f"{match.group(1)}-{match.group(2)}"
-        #         elif vehicle_type == 'policia':
-        #             formatted = f"E PA-{match.group(1)}"
-        #         print('text formatted: ', formatted)
-        #         print('tpye vehicle: ', vehicle_type)
-        #         return formatted, vehicle_type
-        
-
-        #para vehiculo lineal
-
-        
-
-        #para vehiculo regular
-
-
+        for pattern, vehicle_type in patterns:
+            match = re.match(pattern, plate_text)
+            if match:
+                if vehicle_type == 'moto':
+                    formatted = f"{match.group(1)}-{match.group(2)}"
+                elif vehicle_type == 'regular':
+                    formatted = f"{match.group(1)}-{match.group(2)}"
+                elif vehicle_type == 'policia':
+                    formatted = f"E PA-{match.group(1)}"
+                print('text formatted: ', formatted)
+                print('tpye vehicle: ', vehicle_type)
+                return formatted, vehicle_type
         return None, None
 
     def preprocess_plate(self, plate_img):
-
+        """Preprocesa la imagen de la placa para mejorar la precisión del OCR."""
         # Redimensionar para mejorar el procesado y precisión del OCR
-        min_width = 200
+        min_width = 300
         if plate_img.shape[1] < min_width:
             aspect_ratio = plate_img.shape[0] / plate_img.shape[1]
             new_width = min_width
@@ -106,23 +98,22 @@ class PeruvianPlateDetector:
 
         # Convertir a escala de grises
         gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
-        
-        # Mejorar contraste
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+        # Mejorar contraste utilizando CLAHE
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
-        
-        # Reducción de ruido
-        gray = cv2.GaussianBlur(gray, (5,5), 0)
-        
-        # Binarización adaptativa
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                     cv2.THRESH_BINARY, 11, 2)
-        
-        # Operaciones morfológicas para mejorar la calidad
-        kernel = np.ones((2,2), np.uint8)
+
+        # Reducción de ruido con filtro bilateral
+        gray = cv2.bilateralFilter(gray, 11, 17, 17)
+
+        # Binarización con umbral Otsu
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Aplicar dilatación y erosión para reducir imperfecciones
+        kernel = np.ones((3, 3), np.uint8)
         thresh = cv2.dilate(thresh, kernel, iterations=1)
         thresh = cv2.erode(thresh, kernel, iterations=1)
-        
+
         return thresh
 
     def determine_movement_type(self, plate_number):
@@ -164,11 +155,11 @@ class PeruvianPlateDetector:
     def can_process_plate(self, plate_number):
         """Controla el intervalo entre detecciones de la misma placa."""
         current_time = datetime.now()
-        if plate_number in self.last_processed_plates:
-            last_time = self.last_processed_plates[plate_number]
+        if plate_number in self.last_processed_ :
+            last_time = self.last_processed_    [plate_number]
             if (current_time - last_time) < timedelta(seconds=self.min_detection_interval):
                 return False
-        self.last_processed_plates[plate_number] = current_time
+        self.last_processed_    [plate_number] = current_time
         return True
 
     def recognize_plate(self, plate_img):
@@ -177,9 +168,10 @@ class PeruvianPlateDetector:
         # Configurar parámetros de EasyOCR para detectar PE/PERU
         results = self.reader.readtext(
             processed_plate,
-            allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ',
+            allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
             batch_size=1,
-            detail=1
+            detail=1,
+            paragraph=False
         )
 
         if not results:
@@ -188,41 +180,39 @@ class PeruvianPlateDetector:
         # Ordenar resultados por posición horizontal
         results.sort(key=lambda x: x[0][0][0])
 
-        # Calcular la confianza promedio
-        confidence = np.mean([result[2] for result in results])
-
-        plate_number = ''
-        vehicle_type = ''
-        score_r = 0.0
-        found = False  # Se cambió el nombre a "found" para ser más claro en inglés
-
         for t in results:
             bbox, text, score = t
-            print("Longitud del texto:", len(text))
             
-            # Validar si el texto tiene exactamente 7 caracteres (formato de placa esperado)
-            if len(text) < 7 and "-" not in text and len(text) >= 8:
-                print('No cumple con el formato de placa (debe tener 7 caracteres)')
-            else:
-                print(f'Bbox: {bbox}, Text: {text}, Score: {score}')
-                plate_number = text
-                vehicle_type = 'regular'
-                score_r = score
-                found = True
-                print(f'Placa encontrada: {plate_number}, Tipo de vehículo: {vehicle_type}, Score: {score_r}')
+            # Verificamos el formato de la placa
+            validation_result = self.validate_plate_format(text)
             
-            if found:
-                break  # Si se encuentra una placa válida, salir del bucle
+            # Si `validate_plate_format` retorna `None`, ignoramos esta iteración
+            if validation_result is None:
+                continue
+            
+            formatted_plate, vehicle_type = validation_result
+            
+            # Verificar que el OCR no haya detectado caracteres no válidos
+            if formatted_plate and self.is_valid_plate(formatted_plate):
+                print("placa reconocida", formatted_plate, "score ", score)
+                return formatted_plate, vehicle_type, score
 
-        # Verificación final de la placa
-        print(f'Número de placa final: {plate_number}')
-
-        if plate_number:
-            # Si se encontró una placa válida, se retorna la información
-            return plate_number, vehicle_type, score_r
-
-        # Si no se encontró una placa válida, se retorna None
         return None, None, 0.0
+
+    def is_valid_plate(self, plate_text):
+        """Verifica que la placa detectada solo contenga letras y números válidos."""
+        plate_text = plate_text.upper().strip()
+
+        # Regla para placas peruanas: Solo letras A-Z y números 0-9 son válidos
+        valid_plate_pattern = r'^[A-Z0-9-]+$'
+
+        if re.match(valid_plate_pattern, plate_text):
+            return True
+        return False 
+    
+    def generate_random_color(self):
+        import random
+        return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def process_frames(self):
         while self.is_running:
@@ -238,38 +228,45 @@ class PeruvianPlateDetector:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         conf = float(box.conf[0])
                         
-                        if conf > 0.5:
+                        if conf > 0.7:
                             plate_img = frame[y1:y2, x1:x2]
+                            color = self.generate_random_color()
+
+                            # dibujar rectángulo y numero de placa reconocida por modelo yolo
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                            cv2.putText(frame, f"{str(round(conf * 100))}%", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                        
                             plate_number, vehicle_type, ocr_conf = self.recognize_plate(plate_img)
-                            
-                            if plate_number and ocr_conf > 0.3:
+
+                            if plate_number and ocr_conf > 0.85:
                                 if self.can_process_plate(plate_number):
                                     movement_type = self.determine_movement_type(plate_number)
-                                    
+
                                     # Guardar imagen
-                                    if not os.path.exists('plates'):
-                                        os.mkdir('plates')
+                                    img_path = f'static/plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
+                                    img_path_to_db = f'web/static/plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
                                     
-                                    img_path = f'plates/{plate_number}_{movement_type}_{int(time.time())}.jpg'
-                                    cv2.imwrite(img_path, plate_img)
+                                    if not os.path.exists('web/static/plates'):
+                                        os.makedirs('web/static/plates')
+                                    
                                     
                                     # Registrar en base de datos
                                     self.register_vehicle(plate_number, vehicle_type)
-                                    self.register_movement(plate_number, movement_type, img_path, ocr_conf)
-                                    
-                                    print("Placa registrada: ", plate_number)
+                                    self.register_movement(plate_number, movement_type, img_path_to_db, ocr_conf)
 
                                     # Visualización
-                                    color = (0, 255, 0) if movement_type == 'entrada' else (0, 0, 255)
-                                    cv2.rectangle(processed_frame, (x1, y1), (x2, y2), color, 2)
+                                    colorOCR = (0, 255, 0) if movement_type == 'entrada' else (0, 0, 255)
+                                    cv2.rectangle(processed_frame, (x1, y1), (x2, y2), colorOCR, 2)
                                     cv2.putText(processed_frame, 
                                               f'{plate_number} ({movement_type})',
                                               (x1, y1-10),
                                               cv2.FONT_HERSHEY_SIMPLEX,
                                               0.9,
-                                              color,
+                                              colorOCR,
                                               2)
-                
+                                    cv2.imwrite(img_path, plate_img)
+                                    print("placa registrada", plate_number)
+                                    
                 self.result_queue.put(processed_frame)
             else:
                 time.sleep(0.1)
@@ -278,7 +275,7 @@ class PeruvianPlateDetector:
 detector = PeruvianPlateDetector()
 
 def generate_frames():
-    camera = cv2.VideoCapture(0)  # o la URL de la cámara IP
+    camera = cv2.VideoCapture(2)  # o la URL de la cámara IP
     detector.is_running = True
     
     # Iniciar thread de procesamiento
