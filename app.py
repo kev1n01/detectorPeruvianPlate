@@ -207,20 +207,6 @@ class PeruvianPlateDetector:
         if re.match(valid_plate_pattern, plate_text):
             return True
         return False       
-
-        # Ordenar resultados por posición horizontal
-        results.sort(key=lambda x: x[0][0][0])
-
-        for t in results:
-            bbox, text, score = t
-            formatted_plate, vehicle_type = self.validate_plate_format(text)
-            
-            # Verificar que el OCR no haya detectado caracteres no válidos
-            if formatted_plate and self.is_valid_plate(formatted_plate):
-                print("placa reconocida", formatted_plate, "score ", score)
-                return formatted_plate, vehicle_type, score
-
-        return None, None, 0.0
     
     def draw_transparent_rectangle(frame, x1, y1, x2, y2, color, alpha=0.4):
         """
